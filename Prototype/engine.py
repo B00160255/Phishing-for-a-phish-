@@ -1,14 +1,15 @@
 import json
 from difflib import SequenceMatcher
-from naughty_list import BAD_WORDS, BAD_LINKS, load_whitelist
+from db_manager import init_db, load_words_from_db
 
-APPROVED_DOMAINS = load_whitelist()
+init_db()
+BAD_WORDS, BAD_LINKS, APPROVED_DOMAINS, BAD_ATTACHMENTS = load_words_from_db()
 
 sender_domain = input("Enter sender domain (e.g. tudublin.ie): ").strip().lower()
 email_text = input("Paste your email text here:")
 email_text = email_text.lower()
 
-print("DEBUG Whitelist:", APPROVED_DOMAINS)
+#print("DEBUG Whitelist:", APPROVED_DOMAINS)
 if sender_domain in APPROVED_DOMAINS:
     color = "GREEN"
     score = 0
