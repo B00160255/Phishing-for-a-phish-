@@ -6,6 +6,11 @@ BAD_WORDS = {
     "won": "Prize/lottery bait detected"
 }
 
+BAD_ATTACHMENTS = {
+    ".exe": "Executable file attachment detected",
+    ".zip": "Compressed file attachment may contain malware"
+}
+
 BAD_LINKS = {
     "notascam.com": "Known phishing link",
     "fake-login.com": "Credential harvesting page"

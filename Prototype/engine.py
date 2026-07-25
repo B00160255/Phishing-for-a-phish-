@@ -1,4 +1,5 @@
 import json
+from difflib import SequenceMatcher
 from naughty_list import BAD_WORDS, BAD_LINKS, load_whitelist
 
 APPROVED_DOMAINS = load_whitelist()
@@ -16,6 +17,18 @@ if sender_domain in APPROVED_DOMAINS:
 else:
     score = 0
     reason = ""
+
+    for approved_domain in APPROVED_DOMAINS:
+        similarity = SequenceMatcher(None, sender_domain, approved_domain).ratio()
+        if similarity >= 0.8:
+            score += 50
+            reason += f"Sender domain is malicious and may be impersonating the approved domain '{approved_domain}' | "
+        break
+    
+    for attachment in BAD_ATTACHMENTS:
+        if attachment in email_text:
+            score += 30
+            reason += f"Attachment '{attachment}' may be malicious or dangerous file  | "
 
     for word in BAD_WORDS:
         if word in email_text:
