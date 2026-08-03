@@ -1,21 +1,21 @@
-import json
+from flask import Flask, request, jsonify
 from difflib import SequenceMatcher
 from db_manager import init_db, load_words_from_db
 
+app = Flask(__name__)
 init_db()
-BAD_WORDS, BAD_LINKS, APPROVED_DOMAINS, BAD_ATTACHMENTS = load_words_from_db()
 
-sender_domain = input("Enter sender domain (e.g. tudublin.ie): ").strip().lower()
-email_text = input("Paste your email text here:")
-email_text = email_text.lower()
+@app.route('/scan', methods=['POST'])
+def scan_email():
+    data = request.get_json() or {}
+    sender_domain = data.get("sender_domain", "").strip().lower()
+    email_text = data.get("email_text", "").lower()
 
-#print("DEBUG Whitelist:", APPROVED_DOMAINS)
-if sender_domain in APPROVED_DOMAINS:
-    color = "GREEN"
-    score = 0
-    reason = "Sender domain is on the trusted whitelist."
+    BAD_WORDS, BAD_LINKS, APPROVED_DOMAINS, BAD_ATTACHMENTS = load_words_from_db()
 
-else:
+    if sender_domain in APPROVED_DOMAINS:
+        return jsonify({"colour": "GREEN", "score": 0, "reason": "Sender domain is on the trusted whitelist"})
+
     score = 0
     reason = ""
 
@@ -42,12 +42,17 @@ else:
             reason += BAD_LINKS[link] + " | "
 
     if score >= 60:
-        color = "RED"
+        colour = "RED"
     elif score >= 20:
-        color = "ORANGE"
+        colour = "ORANGE"
     else:
-        color = "GREEN"
+        colour = "GREEN"
 
-print("Verdict Colour:", color)
-print("Total Score:", score)
-print("Reasons:", reason)
+    return jsonify({
+        "colour": colour,
+        "score": score,
+        "reason": reason
+    })
+
+if __name__ == '__main__':
+    app.run(port=5000)
