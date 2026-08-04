@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phishing for a Phish</title>
+<style>
+  :root { --ink:#14181d; --muted:#5c6773; --line:#d5dbe2; --wash:#f5f7f9; }
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; color: var(--ink);
+         max-width: 38rem; margin: 0 auto; padding: 3rem 1.25rem; line-height: 1.5; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+
+  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent;
+                 padding: .6rem .9rem; font: inherit; color: var(--muted); cursor: pointer; width: auto; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+
+  .panel[hidden] { display: none; }
+
+  .field { border: 2px dashed var(--line); border-radius: 10px; padding: 1.75rem; text-align: center; }
+  .field p { color: var(--muted); font-size: .875rem; margin: .75rem 0 0; }
+  input[type=file] { width: 100%; }
+
+  label { display: block; font-size: .875rem; font-weight: 600; margin-bottom: .35rem; }
+  .hint { font-weight: 400; color: var(--muted); }
+  textarea, input[type=text] { width: 100%; font: inherit; padding: .65rem .75rem;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--wash); resize: vertical; }
+  textarea { min-height: 11rem; font-family: ui-monospace, monospace; font-size: .875rem; }
+  .row { margin-bottom: 1rem; }
+
+  button[type=submit] { margin-top: 1rem; width: 100%; padding: .7rem 1rem; font: inherit;
+           border: 0; border-radius: 8px; background: var(--ink); color: #fff; cursor: pointer; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #4c8dff; outline-offset: 2px; }
+
+  .result { margin-top: 1.75rem; border-radius: 10px; padding: 1.1rem 1.25rem; color: #fff; }
+  .result h2 { margin: 0; font-size: 1.05rem; letter-spacing: .04em; }
+  .result p { margin: .5rem 0 0; font-size: .9rem; }
+  .RED { background: #a5231c; } .ORANGE { background: #97531a; } .GREEN { background: #1c6340; }
+  .error { margin-top: 1.5rem; color: #a5231c; font-size: .9rem; }
+</style>
+
+<h1>Check a message for phishing</h1>
+<p class="sub">Upload an email file, or paste the text straight in.</p>
+
+<div class="tabs" role="tablist">
+  <button role="tab" id="tab-upload" aria-controls="panel-upload"
+          aria-selected="{{ 'false' if mode == 'paste' else 'true' }}">Upload a file</button>
+  <button role="tab" id="tab-paste" aria-controls="panel-paste"
+          aria-selected="{{ 'true' if mode == 'paste' else 'false' }}">Paste text</button>
+</div>
+
+<section class="panel" id="panel-upload" role="tabpanel" aria-labelledby="tab-upload"
+         {% if mode == 'paste' %}hidden{% endif %}>
+  <form method="post" enctype="multipart/form-data">
+    <div class="field">
+      <input type="file" name="file" accept=".eml,.msg,.txt,.html" required>
+      <p>.eml, .msg, .txt or .html — up to 5 MB</p>
+    </div>
+    <button type="submit">Scan file</button>
+  </form>
+</section>
+
+<section class="panel" id="panel-paste" role="tabpanel" aria-labelledby="tab-paste"
+         {% if mode != 'paste' %}hidden{% endif %}>
+  <form method="post">
+    <div class="row">
+      <label for="email_text">Message text</label>
+      <textarea id="email_text" name="email_text" required
+                placeholder="Paste the body of the email here…">{{ submitted_text or '' }}</textarea>
+    </div>
+    <div class="row">
+      <label for="sender_domain">Sender domain <span class="hint">— optional, but improves the check</span></label>
+      <input type="text" id="sender_domain" name="sender_domain"
+             placeholder="e.g. tuduflin.ie" value="{{ submitted_domain or '' }}">
+    </div>
+    <button type="submit">Scan text</button>
+  </form>
+</section>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% if result %}
+<div class="result {{ result.colour }}">
+  <h2>{{ result.colour }} · score {{ result.score }}</h2>
+  <p>{{ result.reason }}</p>
+</div>
+{% endif %}
+
+<script>
+  const tabs = document.querySelectorAll('[role=tab]');
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    tabs.forEach(t => {
+      const selected = t === tab;
+      t.setAttribute('aria-selected', selected);
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !selected;
+    });
+  }));
+</script>
+</html>
