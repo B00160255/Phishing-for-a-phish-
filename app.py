@@ -31,6 +31,7 @@ SCORE_IMPERSONATION = 50
 SCORE_ATTACHMENT = 30
 SCORE_BAD_WORD = 20
 SCORE_BAD_LINK = 50
+SCORE_UNICODE = 50
  
 THRESHOLD_RED = 60
 THRESHOLD_ORANGE = 20
@@ -81,6 +82,9 @@ def read_upload(file_storage):
  
     return sender_domain, "\n".join(str(p) for p in pieces).lower()
 
+    def contains_unicode(domain):
+        return not domain.isascii()
+
 def analyse(sender_domain, email_text):
     """Score an email. Returns {colour, score, reason}."""
     bad_words, bad_links, whitelist, bad_attachments = load_words_from_db()
@@ -94,6 +98,11 @@ def analyse(sender_domain, email_text):
 
     score = 0
     reasons = []
+
+    if sender_domain:
+        if contains_unicode(sender_domain):
+            score += SCORE_UNICODE
+            reasons.append("Sender domain contains unicode characters, therefore could be an homograph impersonation attack.")
 
     if sender_domain:
         for approved in whitelist:
