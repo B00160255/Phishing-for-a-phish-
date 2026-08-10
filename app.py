@@ -97,6 +97,9 @@ def read_upload(file_storage):
                 return scripts
 
 def get_url_hostname(url):
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
+        
     parsed_url = urlparse(url)
     return parsed_url.hostname or ""
 
