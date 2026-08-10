@@ -16,7 +16,8 @@ Run with python app.py then open http://127.0.0.1:5000
 from difflib import SequenceMatcher
 from email import policy
 from email.parser import BytesParser
- 
+import unicodedata
+from urllib.parse import urlparse
 from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
  
@@ -31,7 +32,8 @@ SCORE_IMPERSONATION = 50
 SCORE_ATTACHMENT = 30
 SCORE_BAD_WORD = 20
 SCORE_BAD_LINK = 50
-SCORE_UNICODE = 50
+SCORE_MIXED_SCRIPT_SENDER = 30
+SCORE_MIXED_SCRIPT_URL = 30
  
 THRESHOLD_RED = 60
 THRESHOLD_ORANGE = 20
@@ -82,8 +84,21 @@ def read_upload(file_storage):
  
     return sender_domain, "\n".join(str(p) for p in pieces).lower()
 
-    def contains_unicode(domain):
-        return not domain.isascii()
+    def get_detected_scripts(text):
+        scripts = set()
+        for char in text:
+            char_name = unicodedata.name(char, "")
+            if "LATIN" in char_name:
+                scripts.add("LATIN")
+            elif "CYRILLIC" in char_name:
+                scripts.add("CYRILLIC")
+            elif "GREEK" in char_name:
+                scripts.add("GREEK")
+                return scripts
+
+def get_url_hostname(url):
+    parsed_url = urlparse(url)
+    return parsed_url.hostname or ""
 
 def analyse(sender_domain, email_text):
     """Score an email. Returns {colour, score, reason}."""
@@ -100,16 +115,35 @@ def analyse(sender_domain, email_text):
     reasons = []
 
     if sender_domain:
-        if contains_unicode(sender_domain):
-            score += SCORE_UNICODE
-            reasons.append("Sender domain contains unicode characters, therefore could be an homograph impersonation attack.")
+        detected scripts = get_detected_scripts(sender_domain)
+        if len(detected_scripts) > 1:
+            score += SCORE_MIXED_SCRIPT_SENDER
+            scripts_found = ", ".join(sorted(detected_scripts))
+            reasons.append(f"Sender domain contains mixed scripts ({scripts_found}), therefore, could be an homograph impersonation attack")
 
     if sender_domain:
+
         for approved in whitelist:
             if SequenceMatcher(None, sender_domain, approved).ratio() >= SIMILARITY_THRESHOLD:
                 score += SCORE_IMPERSONATION
                 reasons.append(f"Sender domain closely resembles the approved domain '{approved}'")
                 break
+
+    for link, reason in bad_links.items():
+        if link in email_text:
+            score += SCORE_BAD_LINK
+            reasons.append(reason)
+
+    for item in email_text.split():
+        if item.startswith("http://") or item.startswith("https://"):
+            hostname = get_url_hostname(item)
+            
+            if hostname:
+                detected_scripts = get_detected_scripts(hostname)
+                if len(detected_scripts) > 1:
+                    score += SCORE_MIXED_SCRIPT_URL
+                    scripts_found = ", ".join(sorted(detected_scripts))
+                    reasons.append(f"The URL '{hostname}' contains mixed scripts ({scripts_found}), therefore, could be an homograph impersonation attack")
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
@@ -119,11 +153,6 @@ def analyse(sender_domain, email_text):
     for word, reason in bad_words.items():
         if word in email_text:
             score += SCORE_BAD_WORD
-            reasons.append(reason)
-
-    for link, reason in bad_links.items():
-        if link in email_text:
-            score += SCORE_BAD_LINK
             reasons.append(reason)
 
     if score >= THRESHOLD_RED:
