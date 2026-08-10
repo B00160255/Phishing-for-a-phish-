@@ -21,6 +21,8 @@ from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
  
 from db_manager import init_db, load_words_from_db
+
+import json, os, urllib.request
  
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024      # 5 MB ceiling
@@ -32,6 +34,7 @@ SCORE_ATTACHMENT = 30
 SCORE_BAD_WORD = 20
 SCORE_BAD_LINK = 50
 SCORE_UNICODE = 50
+SCORE_VIRUSTOTAL = 50
  
 THRESHOLD_RED = 60
 THRESHOLD_ORANGE = 20
@@ -85,6 +88,23 @@ def read_upload(file_storage):
 def contains_unicode(domain):
     return not domain.isascii()
 
+def check_virustotal_domain(domain):
+    try:
+        req = urllib.request.Request(
+            f"https://www.virustotal.com/api/v3/domains/{domain}",
+            headers={"x-apikey": os.environ.get("VT_API_KEY")},
+        )
+        data = json.loads(urllib.request.urlopen(req).read())
+        stats = data["data"]["attributes"]["last_analysis_stats"]
+
+        if stats["malicious"] or stats["suspicious"]:
+            reason = f"VirusTotal flagged {domain}: {stats['malicious']} malicious, {stats['suspicious']} suspicious"
+            return SCORE_VIRUSTOTAL, reason
+    except Exception:
+        pass
+
+    return 0, None
+
 def analyse(sender_domain, email_text):
     """Score an email. Returns {colour, score, reason}."""
     bad_words, bad_links, whitelist, bad_attachments = load_words_from_db()
@@ -109,6 +129,11 @@ def analyse(sender_domain, email_text):
                 score += SCORE_IMPERSONATION
                 reasons.append(f"Sender domain closely resembles the approved domain '{approved}'")
                 break
+
+        vt_score, vt_reason = check_virustotal_domain(sender_domain)
+        if vt_score:
+            score += vt_score
+            reasons.append(vt_reason)
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
