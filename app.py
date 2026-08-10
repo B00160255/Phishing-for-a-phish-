@@ -82,8 +82,8 @@ def read_upload(file_storage):
  
     return sender_domain, "\n".join(str(p) for p in pieces).lower()
 
-    def contains_unicode(domain):
-        return not domain.isascii()
+def contains_unicode(domain):
+    return not domain.isascii()
 
 def analyse(sender_domain, email_text):
     """Score an email. Returns {colour, score, reason}."""
@@ -104,7 +104,6 @@ def analyse(sender_domain, email_text):
             score += SCORE_UNICODE
             reasons.append("Sender domain contains unicode characters, therefore could be an homograph impersonation attack.")
 
-    if sender_domain:
         for approved in whitelist:
             if SequenceMatcher(None, sender_domain, approved).ratio() >= SIMILARITY_THRESHOLD:
                 score += SCORE_IMPERSONATION
