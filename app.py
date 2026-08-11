@@ -16,6 +16,7 @@ Run with python app.py then open http://127.0.0.1:5000
 from difflib import SequenceMatcher
 from email import policy
 from email.parser import BytesParser
+import json, os, urllib.request
 import unicodedata
 from urllib.parse import urlparse
 from flask import Flask, jsonify, render_template, request
@@ -23,7 +24,6 @@ from werkzeug.utils import secure_filename
  
 from db_manager import init_db, load_words_from_db
 
-import json, os, urllib.request
  
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024      # 5 MB ceiling
@@ -34,13 +34,11 @@ SCORE_IMPERSONATION = 50
 SCORE_ATTACHMENT = 30
 SCORE_BAD_WORD = 20
 SCORE_BAD_LINK = 50
-<<<<<<< HEAD
 SCORE_UNICODE = 50
 SCORE_VIRUSTOTAL = 50
-=======
 SCORE_MIXED_SCRIPT_SENDER = 30
 SCORE_MIXED_SCRIPT_URL = 30
->>>>>>> 34879c33b48f6194788e0c0eae3f32bdf27146ae
+SCORE_SPOOFING= 50
  
 THRESHOLD_RED = 60
 THRESHOLD_ORANGE = 20
@@ -69,13 +67,24 @@ def read_upload(file_storage):
     message = BytesParser(policy=policy.default).parsebytes(raw)
  
     sender = message.get("From", "")
-    sender_domain = ""
-    if "@" in sender:
-        sender_domain = sender.split("@")[-1].strip(" <>\"'").lower()
+    return_path = message.get("Return-Path", "")
+
+    sender_domain = (
+        sender.split("@")[-1].strip(" <>\"'").lower() if "@" in sender else ""
+    )
+    return_domain = (
+        return_path.split("@")[-1].strip(" <>\"'").lower() if "@" in return_path else ""
+    )
  
     pieces = [message.get("Subject", "")]
+
+    if return_domain and sender_domain and return_domain != sender_domain:
+        pieces.append(
+            f"SPOOFING WARNING: Visible sender '{sender_domain}' does not match actual Return-Path '{return_domain}'"
+        )
+        pieces.append(f"REAL_SENDER_DOMAIN:{return_domain}")
+
     attachments = []
- 
     for part in message.walk():
         filename = part.get_filename()
         if filename:
@@ -91,7 +100,6 @@ def read_upload(file_storage):
  
     return sender_domain, "\n".join(str(p) for p in pieces).lower()
 
-<<<<<<< HEAD
 def contains_unicode(domain):
     return not domain.isascii()
 
@@ -111,18 +119,19 @@ def check_virustotal_domain(domain):
         pass
 
     return 0, None
-=======
-    def get_detected_scripts(text):
-        scripts = set()
-        for char in text:
-            char_name = unicodedata.name(char, "")
-            if "LATIN" in char_name:
-                scripts.add("LATIN")
-            elif "CYRILLIC" in char_name:
-                scripts.add("CYRILLIC")
-            elif "GREEK" in char_name:
-                scripts.add("GREEK")
-                return scripts
+
+def get_detected_scripts(text):
+    scripts = set()
+    for char in text:
+        char_name = unicodedata.name(char, "")
+        if "LATIN" in char_name:
+            scripts.add("LATIN")
+        elif "CYRILLIC" in char_name:
+            scripts.add("CYRILLIC")
+        elif "GREEK" in char_name:
+            scripts.add("GREEK")
+
+    return scripts
 
 def get_url_hostname(url):
     if not url.startswith(("http://", "https://")):
@@ -130,7 +139,6 @@ def get_url_hostname(url):
         
     parsed_url = urlparse(url)
     return parsed_url.hostname or ""
->>>>>>> 34879c33b48f6194788e0c0eae3f32bdf27146ae
 
 def analyse(sender_domain, email_text):
     """Score an email. Returns {colour, score, reason}."""
@@ -147,29 +155,46 @@ def analyse(sender_domain, email_text):
     reasons = []
 
     if sender_domain:
-        detected scripts = get_detected_scripts(sender_domain)
+        vt_score, vt_reason = check_virustotal_domain(sender_domain)
+        if vt_score:
+            score += vt_score
+            reasons.append(vt_reason)
+
+    if "real_sender_domain:" in email_text:
+        for line in email_text.splitlines():
+            if line.startswith("real_sender_domain"):
+                actual_domain = line.split(":")[-1].strip()
+                vt_score, vt_reason = check_virustotal_domain(actual_domain)
+                if vt_score:
+                    score += vt_score
+                    reasons.append(
+                        f"Actual Return-Path domain check: {vt_reason}"
+                    )
+    if "spoofing warning:" in email_text:
+        score += SCORE_SPOOFING
+        for line in email_text.splitlines():
+            if "spoofing warning:" in line:
+                reasons.append(line.strip().capitalize())
+
+    if sender_domain:
+        detected_scripts = get_detected_scripts(sender_domain)
         if len(detected_scripts) > 1:
             score += SCORE_MIXED_SCRIPT_SENDER
             scripts_found = ", ".join(sorted(detected_scripts))
             reasons.append(f"Sender domain contains mixed scripts ({scripts_found}), therefore, could be an homograph impersonation attack")
 
-<<<<<<< HEAD
-=======
     if sender_domain:
 
->>>>>>> 34879c33b48f6194788e0c0eae3f32bdf27146ae
         for approved in whitelist:
             if SequenceMatcher(None, sender_domain, approved).ratio() >= SIMILARITY_THRESHOLD:
                 score += SCORE_IMPERSONATION
                 reasons.append(f"Sender domain closely resembles the approved domain '{approved}'")
                 break
 
-<<<<<<< HEAD
         vt_score, vt_reason = check_virustotal_domain(sender_domain)
         if vt_score:
             score += vt_score
             reasons.append(vt_reason)
-=======
     for link, reason in bad_links.items():
         if link in email_text:
             score += SCORE_BAD_LINK
@@ -185,7 +210,6 @@ def analyse(sender_domain, email_text):
                     score += SCORE_MIXED_SCRIPT_URL
                     scripts_found = ", ".join(sorted(detected_scripts))
                     reasons.append(f"The URL '{hostname}' contains mixed scripts ({scripts_found}), therefore, could be an homograph impersonation attack")
->>>>>>> 34879c33b48f6194788e0c0eae3f32bdf27146ae
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
