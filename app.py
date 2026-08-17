@@ -21,10 +21,11 @@ import unicodedata
 from urllib.parse import urlparse
 from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
- 
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from db_manager import init_db, load_words_from_db
 
- 
+sia = SentimentIntensityAnalyzer()
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024      # 5 MB ceiling
  
@@ -39,6 +40,7 @@ SCORE_VIRUSTOTAL = 50
 SCORE_MIXED_SCRIPT_SENDER = 30
 SCORE_MIXED_SCRIPT_URL = 30
 SCORE_SPOOFING= 50
+SCORE_PRESSURE = 25
  
 THRESHOLD_RED = 60
 THRESHOLD_ORANGE = 20
@@ -216,10 +218,21 @@ def analyse(sender_domain, email_text):
             score += SCORE_ATTACHMENT
             reasons.append(reason)
 
+    matched_bad_words = []
     for word, reason in bad_words.items():
         if word in email_text:
             score += SCORE_BAD_WORD
             reasons.append(reason)
+            matched_bad_words.append(word)
+
+    if matched_bad_words:
+        sentiment = sia.polarity_scores(email_text)
+        is_negative = sentiment["compound"] < -0.3 or sentiment["neg"] > 0.25
+        if is_negative:
+            score += SCORE_PRESSURE
+            reasons.append(
+                "High-Pressure threat language detected (Aggressive negative tone combined with suspicous keywords)"
+            )
 
     if score >= THRESHOLD_RED:
         colour = "RED"
