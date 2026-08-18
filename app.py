@@ -56,7 +56,14 @@ def is_allowed(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def is_trusted(domain, whitelist):
-    return any(domain == w or domain.endswith("." + w) for w in whitelist)
+    if not domain:
+        return False
+    domain = domain.strip().lower()
+    for w in whitelist:
+        w = (w or "").strip().lower()
+        if w and (domain == w or domain.endswith("." + w)):
+            return True
+    return False
 
 def read_upload(file_storage):
     """Turn an uploaded file into (sender_domain, return_domain, email_text)."""
@@ -140,10 +147,13 @@ def analyse(sender_domain, email_text, return_domain=""):
     return_domain = (return_domain or "").strip().lower()
     email_text = (email_text or "").lower()
 
+    sender_trusted = is_trusted(sender_domain, whitelist)
+    return_trusted = is_trusted(return_domain, whitelist) if return_domain else False
+
     is_spoofed = bool(return_domain and sender_domain != return_domain and not is_trusted(return_domain, whitelist))
 
-    if is_trusted(sender_domain, whitelist) and not is_spoofed:
-        return {"colour": "GREEN", "score": 0, "reason": "Sender domain is on the trusted whitelist"}
+    if (sender_trusted or return_trusted) and not is_spoofed:
+        return {"colour": "GREEN", "score": 0, "reason": "Sender/Return-Path domain is on the trusted whitelist"}
 
     score = 0
     reasons = []
