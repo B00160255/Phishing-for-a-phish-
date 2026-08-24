@@ -178,7 +178,7 @@ def analyse(sender_domain, email_text, return_domain=""):
         for approved in whitelist:
             if SequenceMatcher(None, check_domain, approved).ratio() >= SIMILARITY_THRESHOLD:
                 score += SCORE_IMPERSONATION
-                reasons.append(f"Sender domain closely resembles approved domain '{approved}'")
+                reasons.append(f"Sender domain '{check_domain}' closely resembles approved domain '{approved}'")
                 break
 
     for link, reason in bad_links.items():
@@ -194,7 +194,7 @@ def analyse(sender_domain, email_text, return_domain=""):
                 if len(detected_scripts) > 1:
                     scripts_found = ", ".join(sorted(detected_scripts))
                     score += SCORE_MIXED_SCRIPT_URL
-                    reasons.append(f"URL '{hostname}' contains mixed scripts ({scripts_found})")
+                    reasons.append(f"URL hostname '{hostname}' contains mixed scripts {scripts_found}")
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
