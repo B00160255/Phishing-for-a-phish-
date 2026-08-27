@@ -344,4 +344,4 @@ def too_large(_):
     return jsonify({"error": "File exceeds the 5 MB limit"}), 413
 
 if __name__ == "__main__":
-    app.run(host=0000, port=5000, debug=True)
+    app.run(port=5000, debug=True)
