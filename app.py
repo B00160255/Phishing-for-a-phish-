@@ -228,23 +228,35 @@ def analyse(sender_domain, email_text, return_domain=""):
                 findings.add("lookalike", f"Sender domain '{check_domain}' closely resembles approved domain '{approved}'", SCORE_IMPERSONATION)
                 break
 
-    for link, reason in bad_links.items():
+    '''for link, reason in bad_links.items():
         if link in email_text:
-            findings.add("bad_link", reason, SCORE_BAD_LINK)
+            findings.add("bad_link", reason, SCORE_BAD_LINK)'''
 
     for item in email_text.split():
         if item.startswith(("http://", "https://")):
             hostname = get_url_hostname(item)
-            if hostname:
-                detected_scripts = get_detected_scripts(hostname)
-                if len(detected_scripts) > 1:
-                    scripts_found = ", ".join(sorted(detected_scripts))
-                    findings.add("homograph", f"URL hostname '{hostname}' contains mixed scripts ({scripts_found})", SCORE_MIXED_SCRIPT_URL)
+            
+            for link, reason in bad_links.items(): 
+                if link in item: 
+                    findings.add("bad_link", reason, SCORE_BAD_LINK)
+                    break 
 
-                for approved in whitelist:
-                    if SequenceMatcher(None, hostname, approved).ratio() >= SIMILARITY_THRESHOLD:
-                        findings.add("lookalike", f"URL hostname '{hostname}' closely resembles approved domain '{approved}'", SCORE_IMPERSONATION)
-                        break
+            if hostname: 
+
+                detected_scripts = get_detected_scripts(hostname) 
+                if len(detected_scripts) > 1: 
+                    scripts_found = ", ".join(sorted(detected_scripts)) 
+                    findings.add("mixed_script", f"URL hostname '{hostname}' contains mixed scripts {scripts_found}", SCORE_MIXED_SCRIPT_URL) 
+
+                compare_hostname = hostname 
+
+                if compare_hostname.startswith("www."): 
+                    compare_hostname = compare_hostname[4:] 
+
+                    for approved in whitelist:
+                        if SequenceMatcher(None, compare_hostname, approved).ratio() >= SIMILARITY_THRESHOLD: 
+                            findings.add("lookalike", f"URL hostname '{hostname}' closely resembles legitimate domain '{approved}'", SCORE_IMPERSONATION) 
+                            break 
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
