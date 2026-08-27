@@ -13,6 +13,7 @@ are iterables of strings.
 Run with python app.py then open http://127.0.0.1:5000
 """
 
+from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from email import policy
 from email.parser import BytesParser
@@ -27,7 +28,7 @@ from werkzeug.utils import secure_filename
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from db_manager import init_db, load_words_from_db
 
-sia = SentimentIntensityAnalyzer()
+sia = SentimentIntensityAnalyzer() 
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024      # 5 MB ceiling
@@ -50,7 +51,59 @@ THRESHOLD_ORANGE = 20
 
 SIMILARITY_THRESHOLD = 0.8
 
+CATEGORY_LABELS = {
+    "spoofing": "Spoofing",
+    "reputation": "Domain reputation",
+    "homograph": "Domain shape",
+    "lookalike": "Lookalike domain",
+    "bad_link": "Known-bad link",
+    "attachment": "Attachment",
+    "bad_word": "Language",
+    "pressure": "Tone",
+    "trust": "Trust",
+}
+
 init_db()
+
+@dataclass
+class Finding:
+    category: str
+    detail: str
+    points: int
+
+
+@dataclass
+class Findings:
+    items: list = field(default_factory=list)
+
+    def add(self, category, detail, points):
+        self.items.append(Finding(category, detail, points))
+
+    @property
+    def total(self):
+        return sum(f.points for f in self.items)
+
+
+def build_result(findings):
+    score = findings.total
+    colour = "RED" if score >= THRESHOLD_RED else ("ORANGE" if score >= THRESHOLD_ORANGE else "GREEN")
+    ordered = sorted(findings.items, key=lambda f: -f.points)
+
+    return {
+        "colour": colour,
+        "score": score,
+        "reason": " | ".join(f.detail for f in ordered) or "No suspicious indicators found",
+        "findings": [
+            {
+                "category": f.category,
+                "label": CATEGORY_LABELS.get(f.category, f.category.replace("_", " ").title()),
+                "detail": f.detail,
+                "points": f.points,
+            }
+            for f in ordered
+        ],
+        "thresholds": {"orange": THRESHOLD_ORANGE, "red": THRESHOLD_RED},
+    }
 
 def is_allowed(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -150,38 +203,34 @@ def analyse(sender_domain, email_text, return_domain=""):
     is_spoofed = bool(return_domain and sender_domain != return_domain and not is_trusted(return_domain, whitelist))
 
     if (sender_trusted or return_trusted) and not is_spoofed:
-        return {"colour": "GREEN", "score": 0, "reason": "Sender/Return-Path domain is on the trusted whitelist"}
+        clean = Findings()
+        clean.add("trust", "Sender/Return-Path domain is on the trusted whitelist", 0)
+        return build_result(clean)
 
-    score = 0
-    reasons = []
+    findings = Findings()
 
     if is_spoofed:
-        score += SCORE_SPOOFING
-        reasons.append(f"Spoofing Warning: Sender '{sender_domain}' does not match Return-Path '{return_domain}'")
+        findings.add("spoofing", f"Spoofing Warning: Sender '{sender_domain}' does not match Return-Path '{return_domain}'", SCORE_SPOOFING)
 
     check_domain = return_domain if (is_spoofed and return_domain) else sender_domain
     if check_domain:
         vt_score, vt_reason = check_virustotal_domain(check_domain)
         if vt_score:
-            score += vt_score
-            reasons.append(f"Domain check: {vt_reason}")
+            findings.add("reputation", f"Domain check: {vt_reason}", vt_score)
 
         detected_scripts = get_detected_scripts(check_domain)
         if len(detected_scripts) > 1:
             scripts_found = ", ".join(sorted(detected_scripts))
-            score += SCORE_MIXED_SCRIPT_SENDER
-            reasons.append(f"Sender domain '{check_domain}' contains mixed scripts ({scripts_found})")
+            findings.add("homograph", f"Sender domain '{check_domain}' contains mixed scripts ({scripts_found})", SCORE_MIXED_SCRIPT_SENDER)
 
         for approved in whitelist:
             if SequenceMatcher(None, check_domain, approved).ratio() >= SIMILARITY_THRESHOLD:
-                score += SCORE_IMPERSONATION
-                reasons.append(f"Sender domain '{check_domain}' closely resembles approved domain '{approved}'")
+                findings.add("lookalike", f"Sender domain '{check_domain}' closely resembles approved domain '{approved}'", SCORE_IMPERSONATION)
                 break
 
     for link, reason in bad_links.items():
         if link in email_text:
-            score += SCORE_BAD_LINK
-            reasons.append(reason)
+            findings.add("bad_link", reason, SCORE_BAD_LINK)
 
     for item in email_text.split():
         if item.startswith(("http://", "https://")):
@@ -190,36 +239,29 @@ def analyse(sender_domain, email_text, return_domain=""):
                 detected_scripts = get_detected_scripts(hostname)
                 if len(detected_scripts) > 1:
                     scripts_found = ", ".join(sorted(detected_scripts))
-                    score += SCORE_MIXED_SCRIPT_URL
-                    reasons.append(f"URL hostname '{hostname}' contains mixed scripts {scripts_found}")
+                    findings.add("homograph", f"URL hostname '{hostname}' contains mixed scripts ({scripts_found})", SCORE_MIXED_SCRIPT_URL)
 
                 for approved in whitelist:
                     if SequenceMatcher(None, hostname, approved).ratio() >= SIMILARITY_THRESHOLD:
-                        score += SCORE_IMPERSONATION
-                        reasons.append(f"URL hostname '{hostname}' closely resembles legitimate domain '{approved}'")
+                        findings.add("lookalike", f"URL hostname '{hostname}' closely resembles approved domain '{approved}'", SCORE_IMPERSONATION)
                         break
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
-            score += SCORE_ATTACHMENT
-            reasons.append(reason)
+            findings.add("attachment", reason, SCORE_ATTACHMENT)
 
     matched_bad_words = []
     for word, reason in bad_words.items():
         if re.search(rf"\b{re.escape(word)}\b", email_text, re.I):
-            score += SCORE_BAD_WORD
-            reasons.append(reason)
+            findings.add("bad_word", reason, SCORE_BAD_WORD)
             matched_bad_words.append(word)
 
     if matched_bad_words:
         sentiment = sia.polarity_scores(email_text)
         if sentiment["compound"] < -0.3 or sentiment["neg"] > 0.25:
-            score += SCORE_PRESSURE
-            reasons.append("High-pressure threat language detected")
+            findings.add("pressure", "Email contains high-pressure language", SCORE_PRESSURE)
 
-    colour = "RED" if score >= THRESHOLD_RED else ("ORANGE" if score >= THRESHOLD_ORANGE else "GREEN")
-
-    return {"colour": colour, "score": score, "reason": " | ".join(reasons) or "No suspicious indicators found"}
+    return build_result(findings)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
