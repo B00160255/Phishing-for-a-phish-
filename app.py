@@ -240,18 +240,32 @@ def analyse(sender_domain, email_text, return_domain=""):
     for item in email_text.split():
         if item.startswith(("http://", "https://")):
             hostname = get_url_hostname(item)
-   
+
             if hostname:
+                compare_hostname = hostname
 
-                compare_hostname = hostname 
+                if compare_hostname.startswith("www."):
+                    compare_hostname = compare_hostname[4:]
 
-                if compare_hostname.startswith("www."): 
-                    compare_hostname = compare_hostname[4:] 
+                for approved in whitelist:
+                    approved = approved.strip().lower()
 
-                    for approved in whitelist:
-                        if SequenceMatcher(None, compare_hostname, approved).ratio() >= SIMILARITY_THRESHOLD: 
-                            findings.add("lookalike", f"URL hostname '{hostname}' closely resembles legitimate domain '{approved}'", SCORE_IMPERSONATION) 
-                            break                    
+                    if approved.startswith("www."):
+                        approved = approved[4:]
+
+                    similarity = SequenceMatcher(
+                        None,
+                        compare_hostname,
+                        approved
+                    ).ratio()
+
+                    if similarity >= SIMILARITY_THRESHOLD:
+                        findings.add(
+                            "lookalike",
+                            f"URL hostname '{hostname}' closely resembles legitimate domain '{approved}'",
+                            SCORE_IMPERSONATION
+                        )
+                        break                  
 
     for item in email_text.split():
         if item.startswith(("http://", "https://")):
