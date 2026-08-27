@@ -241,17 +241,6 @@ def analyse(sender_domain, email_text, return_domain=""):
         if item.startswith(("http://", "https://")):
             hostname = get_url_hostname(item)
    
-            if hostname: 
-
-                detected_scripts = get_detected_scripts(hostname) 
-                if len(detected_scripts) > 1: 
-                    scripts_found = ", ".join(sorted(detected_scripts)) 
-                    findings.add("mixed_script", f"URL hostname '{hostname}' contains mixed scripts {scripts_found}", SCORE_MIXED_SCRIPT_URL) 
-
-    for item in email_text.split():
-        if item.startswith(("http://", "https://")):
-            hostname = get_url_hostname(item)
-   
             if hostname:
 
                 compare_hostname = hostname 
@@ -262,7 +251,20 @@ def analyse(sender_domain, email_text, return_domain=""):
                     for approved in whitelist:
                         if SequenceMatcher(None, compare_hostname, approved).ratio() >= SIMILARITY_THRESHOLD: 
                             findings.add("lookalike", f"URL hostname '{hostname}' closely resembles legitimate domain '{approved}'", SCORE_IMPERSONATION) 
-                            break 
+                            break                    
+
+    for item in email_text.split():
+        if item.startswith(("http://", "https://")):
+            hostname = get_url_hostname(item)
+   
+            if hostname: 
+
+                detected_scripts = get_detected_scripts(hostname) 
+                if len(detected_scripts) > 1: 
+                    scripts_found = ", ".join(sorted(detected_scripts)) 
+                    findings.add("mixed_script", f"URL hostname '{hostname}' contains mixed scripts {scripts_found}", SCORE_MIXED_SCRIPT_URL) 
+
+
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
