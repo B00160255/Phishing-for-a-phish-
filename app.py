@@ -133,9 +133,6 @@ def get_detected_scripts(text):
     return scripts
 
 def get_url_hostname(url):
-    if not url.startswith(("http://", "https://")):
-        url = "http://" + url
-        
     parsed_url = urlparse(url)
     return parsed_url.hostname or ""
 
@@ -195,6 +192,12 @@ def analyse(sender_domain, email_text, return_domain=""):
                     scripts_found = ", ".join(sorted(detected_scripts))
                     score += SCORE_MIXED_SCRIPT_URL
                     reasons.append(f"URL hostname '{hostname}' contains mixed scripts {scripts_found}")
+
+                for approved in whitelist:
+                    if SequenceMatcher(None, hostname, approved).ratio() >= SIMILARITY_THRESHOLD:
+                        score += SCORE_IMPERSONATION
+                        reasons.append(f"URL hostname '{hostname}' closely resembles legitimate domain '{approved}'")
+                        break
 
     for extension, reason in bad_attachments.items():
         if extension in email_text:
