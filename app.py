@@ -232,21 +232,27 @@ def analyse(sender_domain, email_text, return_domain=""):
         if link in email_text:
             findings.add("bad_link", reason, SCORE_BAD_LINK)'''
 
-    for item in email_text.split():
-        if item.startswith(("http://", "https://")):
-            hostname = get_url_hostname(item)
-            
-            for link, reason in bad_links.items(): 
+    for link, reason in bad_links.items(): 
                 if link in item: 
                     findings.add("bad_link", reason, SCORE_BAD_LINK)
                     break 
 
+    for item in email_text.split():
+        if item.startswith(("http://", "https://")):
+            hostname = get_url_hostname(item)
+   
             if hostname: 
 
                 detected_scripts = get_detected_scripts(hostname) 
                 if len(detected_scripts) > 1: 
                     scripts_found = ", ".join(sorted(detected_scripts)) 
                     findings.add("mixed_script", f"URL hostname '{hostname}' contains mixed scripts {scripts_found}", SCORE_MIXED_SCRIPT_URL) 
+
+    for item in email_text.split():
+        if item.startswith(("http://", "https://")):
+            hostname = get_url_hostname(item)
+   
+            if hostname:
 
                 compare_hostname = hostname 
 
