@@ -229,8 +229,16 @@ def analyse(sender_domain, email_text, return_domain=""):
                 break
 
     for link, reason in bad_links.items():
-        if link in email_text:
-            findings.add("bad_link", reason, SCORE_BAD_LINK)            
+        link_stripped = link.strip().lower()
+
+        if link_stripped in email_text:
+            findings.add("bad_link", reason, SCORE_BAD_LINK)
+
+        if sender_domain and (sender_domain == link_stripped or sender_domain.endswith(f".{link_stripped}")):
+            findings.add("bad_link", f"sender domain is known to be malicious: {reason}", SCORE_BAD_LINK)
+
+        if return_domain and (return_domain == link_stripped or return_domain.endswith(f".{link_stripped}")):
+            findings.add("bad_link", f"Return-Path domain is known to be malicious: {reason}", SCORE_BAD_LINK)
 
     for item in email_text.split():
         if item.startswith(("http://", "https://")):
