@@ -318,9 +318,9 @@ def scan():
         sender_domain, return_domain, email_text = read_upload(uploaded)
     else:
         data = request.get_json(silent=True) or {}
-        sender_domain = data.get("sender_domain", "")
-        return_domain = data.get("return_domain", "")
-        email_text = data.get("email_text", "")
+        email_text = (data.get("email_text") or request.form.get("email_text") or "").strip()
+        sender_domain = (data.get("sender_domain") or request.form.get("sender_domain") or "").strip()
+        return_domain = (data.get("return_domain") or request.form.get("return_domain") or "").strip()
 
     return jsonify(analyse(sender_domain, email_text, return_domain))
 
